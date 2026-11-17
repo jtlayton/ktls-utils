@@ -27,7 +27,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
 
 #include <stdbool.h>
 #include <stdarg.h>
@@ -218,38 +217,6 @@ static void tlshd_dane_set_reason(struct tlshd_dane_result *res,
 }
 
 /**
- * @brief Test whether a reference name is an IP address literal
- * @param[in]     name  Candidate reference name
- *
- * @retval true   The name is an address literal
- * @retval false  The name may be a DNS name
- */
-static bool tlshd_dane_is_ip_literal(const char *name)
-{
-	struct in6_addr a6;
-	struct in_addr a4;
-	bool literal = false;
-	char *copy, *zone;
-
-	if (name[0] == '[')
-		return true;
-	if (inet_pton(AF_INET, name, &a4) == 1)
-		return true;
-	if (inet_pton(AF_INET6, name, &a6) == 1)
-		return true;
-
-	/* A scoped literal such as fe80::1%eth0 is still a literal. */
-	copy = g_strdup(name);
-	zone = strchr(copy, '%');
-	if (zone) {
-		*zone = '\0';
-		literal = inet_pton(AF_INET6, copy, &a6) == 1;
-	}
-	g_free(copy);
-	return literal;
-}
-
-/**
  * @brief Lower-case a DNS name and remove any trailing dot
  * @param[in]     name  Name in presentation form
  *
@@ -310,7 +277,7 @@ static char *tlshd_dane_normalize_name(const char *name, unsigned short port,
 	}
 
 	/* RFC 7671 Section 5.1: an IP literal has no TLSA binding. */
-	if (tlshd_dane_is_ip_literal(work)) {
+	if (tlshd_is_ip_literal(work)) {
 		*why = g_strdup("reference name is an IP address literal");
 		goto out_reject;
 	}

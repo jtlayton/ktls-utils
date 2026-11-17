@@ -35,7 +35,9 @@
 #include <stdio.h>
 #include <errno.h>
 
+#include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <arpa/inet.h>
 #include <netdb.h>
 #include <keyutils.h>
 
@@ -47,6 +49,38 @@
 
 #include "tlshd.h"
 #include "netlink.h"
+
+/**
+ * @brief Test whether a peer name is an IP address literal
+ * @param[in]     name  Candidate peer name
+ *
+ * @retval true   The name is an address literal
+ * @retval false  The name may be a DNS name
+ */
+bool tlshd_is_ip_literal(const char *name)
+{
+	struct in6_addr a6;
+	struct in_addr a4;
+	bool literal = false;
+	char *copy, *zone;
+
+	if (name[0] == '[')
+		return true;
+	if (inet_pton(AF_INET, name, &a4) == 1)
+		return true;
+	if (inet_pton(AF_INET6, name, &a6) == 1)
+		return true;
+
+	/* A scoped literal such as fe80::1%eth0 is still a literal. */
+	copy = g_strdup(name);
+	zone = strchr(copy, '%');
+	if (zone) {
+		*zone = '\0';
+		literal = inet_pton(AF_INET6, copy, &a6) == 1;
+	}
+	g_free(copy);
+	return literal;
+}
 
 /**
  * @brief Toggle the use of the Nagle algorithm

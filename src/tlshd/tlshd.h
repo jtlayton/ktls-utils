@@ -96,6 +96,7 @@ gchar *tlshd_config_get_dane_trust_anchor(void);
 gchar **tlshd_config_get_dane_resolvers(gsize *count);
 
 /* handshake.c */
+extern bool tlshd_is_ip_literal(const char *name);
 extern void tlshd_start_tls_handshake(gnutls_session_t session,
 				      struct tlshd_handshake_parms *parms);
 extern void tlshd_service_socket(void);

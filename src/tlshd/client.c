@@ -85,6 +85,31 @@ static int tlshd_client_get_truststore(gnutls_certificate_credentials_t cred)
 	return GNUTLS_E_SUCCESS;
 }
 
+/**
+ * @brief Send the server name indication for a client session
+ * @param[in]     session  Session to configure
+ * @param[in]     name     Name the server is expected to present
+ *
+ * RFC 6066 Section 3 does not permit an address literal in the SNI
+ * HostName, and a GnuTLS server fails the handshake when it receives
+ * an IPv6 literal there. When the peer is named by address, omit the
+ * extension. Certificate verification still matches the peer name,
+ * so a server certificate carrying the address in an iPAddress
+ * subjectAltName continues to authenticate.
+ *
+ * @returns a GnuTLS error code
+ */
+static int tlshd_client_set_sni(gnutls_session_t session, const char *name)
+{
+	if (tlshd_is_ip_literal(name)) {
+		tlshd_log_debug("Peer name %s is an address literal; omitting SNI",
+				name);
+		return GNUTLS_E_SUCCESS;
+	}
+	return gnutls_server_name_set(session, GNUTLS_NAME_DNS, name,
+				      strlen(name));
+}
+
 static int tlshd_tls13_client_anon_verify_function(gnutls_session_t session);
 
 /**
@@ -132,7 +157,7 @@ static void tlshd_tls13_client_anon_handshake(struct tlshd_handshake_parms *parm
 	gnutls_session_set_ptr(session, parms);
 
 	sni = tlshd_dane_sni_name(parms);
-	gnutls_server_name_set(session, GNUTLS_NAME_DNS, sni, strlen(sni));
+	tlshd_client_set_sni(session, sni);
 
 	gnutls_credentials_set(session, GNUTLS_CRD_CERTIFICATE, xcred);
 
@@ -519,8 +544,7 @@ static void tlshd_tls13_client_x509_handshake(struct tlshd_handshake_parms *parm
 	gnutls_session_set_ptr(session, parms);
 
 	sni = tlshd_dane_sni_name(parms);
-	ret = gnutls_server_name_set(session, GNUTLS_NAME_DNS, sni,
-				     strlen(sni));
+	ret = tlshd_client_set_sni(session, sni);
 	if (ret != GNUTLS_E_SUCCESS) {
 		tlshd_log_gnutls_error(ret);
 		goto out_free_certs;
@@ -769,8 +793,7 @@ static void tlshd_quic_client_set_x509_session(struct tlshd_quic_conn *conn)
 	ret = gnutls_credentials_set(session, GNUTLS_CRD_CERTIFICATE, cred);
 	if (ret)
 		goto err_session;
-	ret = gnutls_server_name_set(session, GNUTLS_NAME_DNS,
-				     parms->peername, strlen(parms->peername));
+	ret = tlshd_client_set_sni(session, parms->peername);
 	if (ret)
 		goto err_session;
 	conn->session = session;
